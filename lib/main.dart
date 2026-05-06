@@ -652,41 +652,124 @@ class _ForexHomePageState extends State<ForexHomePage> {
   Widget _buildChatBubble(ChatMessage msg) {
     final isMe = msg.user == 'You';
     final isSignal = msg.isSignal;
+    final isBuy = msg.signalType == 'BUY';
+    final isSell = msg.signalType == 'SELL';
+
+    // Color based on signal type (like candlesticks)
+    Color bubbleColor;
+    Color borderColor;
+    if (isSignal && isBuy) {
+      bubbleColor = Colors.green.withValues(alpha: 0.15);
+      borderColor = Colors.green;
+    } else if (isSignal && isSell) {
+      bubbleColor = Colors.red.withValues(alpha: 0.15);
+      borderColor = Colors.red;
+    } else if (isMe) {
+      bubbleColor = Colors.blue.withValues(alpha: 0.1);
+      borderColor = Colors.blue;
+    } else {
+      bubbleColor = Colors.grey.withValues(alpha: 0.1);
+      borderColor = Colors.grey;
+    }
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
-        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!isMe) CircleAvatar(child: Text(msg.user.substring(0, 1))),
-          const SizedBox(width: 8),
-          Flexible(
+          // Timeline indicator (like candlestick wick)
+          Column(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: borderColor.withValues(alpha: 0.2),
+                child: Text(
+                  msg.user.substring(0, 1),
+                  style: TextStyle(color: borderColor, fontWeight: FontWeight.bold),
+                ),
+              ),
+              // Timeline line
+              if (!isMe) Container(width: 2, height: 20, color: Colors.grey[300]),
+            ],
+          ),
+          const SizedBox(width: 12),
+          Expanded(
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isSignal
-                    ? Colors.amber.withValues(alpha: 0.2)
-                    : (isMe ? Colors.blue.withValues(alpha: 0.1) : Colors.grey.withValues(alpha: 0.1)),
+                color: bubbleColor,
                 borderRadius: BorderRadius.circular(12),
-                border: isSignal ? Border.all(color: Colors.amber) : null,
+                border: Border.all(color: borderColor, width: isSignal ? 2 : 1),
+                boxShadow: isSignal ? [
+                  BoxShadow(
+                    color: borderColor.withValues(alpha: 0.3),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ] : null,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Header with user and timestamp
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          if (isSignal) ...[
+                            Icon(
+                              isBuy ? Icons.trending_up : Icons.trending_down,
+                              size: 16,
+                              color: borderColor,
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          Text(
+                            msg.user,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: isSignal ? borderColor : null,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        _formatTimestamp(msg.timestamp),
+                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  // Message content
                   Text(
-                    msg.user,
+                    msg.message,
                     style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: isSignal ? Colors.amber[800] : null,
+                      fontSize: 14,
+                      color: isSignal ? borderColor.withValues(alpha: 0.8) : null,
+                      fontWeight: isSignal ? FontWeight.w500 : FontWeight.normal,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(msg.message),
-                  const SizedBox(height: 4),
-                  Text(
-                    DateFormat('HH:mm').format(msg.timestamp),
-                    style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-                  ),
+                  // Signal badge
+                  if (isSignal) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: borderColor,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '${msg.signalType} SIGNAL',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -694,6 +777,16 @@ class _ForexHomePageState extends State<ForexHomePage> {
         ],
       ),
     );
+  }
+
+  String _formatTimestamp(DateTime timestamp) {
+    final now = DateTime.now();
+    final difference = now.difference(timestamp);
+
+    if (difference.inMinutes < 1) return 'Just now';
+    if (difference.inMinutes < 60) return '${difference.inMinutes}m ago';
+    if (difference.inHours < 24) return '${difference.inHours}h ${difference.inMinutes % 60}m ago';
+    return DateFormat('MMM dd, HH:mm').format(timestamp);
   }
 
   Widget _buildChatInput() {
