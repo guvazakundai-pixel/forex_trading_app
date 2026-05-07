@@ -4,10 +4,16 @@ import 'package:intl/intl.dart';
 import 'services/forex_service_free.dart';
 import 'services/news_service.dart';
 import 'services/chat_service.dart';
+import 'services/database_service.dart';
+import 'services/alert_service.dart';
+import 'services/calculator_service.dart';
+import 'services/sentiment_service.dart';
+import 'services/backtest_service.dart';
 import 'services/api_config.dart';
 import 'models/signal_model.dart';
 import 'screens/about_screen.dart';
 import 'screens/learning_screen.dart';
+import 'screens/trade_history_screen.dart';
 
 void main() {
   runApp(const ForexApp());
@@ -53,21 +59,46 @@ class _ForexHomePageState extends State<ForexHomePage> {
   List<dynamic> _news = [];
   List<ChatMessage> _chatMessages = [];
   List<TradeSignal> _tradeSignals = [];
+  Map<String, dynamic>? _sentimentData;
+  BacktestResult? _backtestResult;
   bool _isLoading = false;
+  bool _isBacktesting = false;
   String _selectedPair = 'EUR/USD';
   int _selectedIndex = 0;
+  int _selectedTimeframe = 0; // 0=1D, 1=1H, 2=5m
   TradeSignal? _currentSignal;
+  double _accountBalance = 10000;
+  double _riskPercent = 1.0;
 
   final List<String> _pairs = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'USD/ZWL'];
+  final List<String> _timeframes = ['1D', '1H', '5m'];
 
   final TextEditingController _chatController = TextEditingController();
+  final TextEditingController _alertPriceController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _fetchData();
-    _chatMessages = ChatService.getMessages();
+    _initializeServices();
+    _loadChatMessages();
     _loadTradeSignals();
+  }
+
+  Future<void> _initializeServices() async {
+    await AlertService.init();
+    await _fetchData();
+  }
+
+  Future<void> _loadChatMessages() async {
+    final messages = await ChatService.getMessages();
+    setState(() {
+      _chatMessages = messages;
+    });
+    await ChatService.loadInitialMessages();
+    final updatedMessages = await ChatService.getMessages();
+    setState(() {
+      _chatMessages = updatedMessages;
+    });
   }
 
   void _loadTradeSignals() {
@@ -107,21 +138,25 @@ class _ForexHomePageState extends State<ForexHomePage> {
       final historicalData = await ForexService.fetchForexTimeSeries(from, to);
       final news = await NewsService.fetchForexNews(from);
 
-      setState(() {
-        _forexData = currentData;
-        _historicalData = historicalData;
-        _news = news.take(10).toList();
-        _isLoading = false;
-        
-        // Generate trade signal from the data
-        if (historicalData != null) {
-          final signal = ForexService.generateSignal(historicalData);
-          final rate = currentData?['Realtime Currency Exchange Rate']?['5. Exchange Rate'];
-          if (rate != null) {
-            _currentSignal = TradeSignal.fromSignal(_selectedPair, signal, double.parse(rate));
-          }
-        }
-      });
+          setState(() {
+            _forexData = currentData;
+            _historicalData = historicalData;
+            _news = news.take(10).toList();
+            _isLoading = false;
+            
+            // Generate trade signal from the data
+            if (historicalData != null) {
+              final signal = ForexService.generateSignal(historicalData);
+              final rate = currentData?['Realtime Currency Exchange Rate']?['5. Exchange Rate'];
+              if (rate != null) {
+                _currentSignal = TradeSignal.fromSignal(_selectedPair, signal, double.parse(rate));
+                // Save trade to database
+                if (_currentSignal != null) {
+                  DatabaseService.saveTrade(_currentSignal!);
+                }
+              }
+            }
+          });
     } catch (e) {
       setState(() => _isLoading = false);
       print('Error fetching data: $e');
@@ -154,6 +189,15 @@ class _ForexHomePageState extends State<ForexHomePage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const AboutScreen()),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.history),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const TradeHistoryScreen()),
               );
             },
           ),
